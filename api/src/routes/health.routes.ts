@@ -8,10 +8,10 @@ import logger from '../utils/logger';
  * must be deterministic and must not leak internal details on failure.
  *
  * Invariants:
-*  1. GET health endpoints are idempotent and read-only.
+ *  1. GET health endpoints are idempotent and read-only.
  *  2. Only GET and HEAD are allowed; any other method returns 405.
  *  3. Unknown subpaths return 404 with a stable JSON shape.
-*  4. Errors from downstream controllers are normalized to 503 with
+ *  4. Errors from downstream controllers are normalized to 503 with
  *     a non-sensitive payload and logged with request context.
  *  5. No query parameters are required or trusted; unknown query keys are
  *     ignored so clients in different versions remain compatible.
@@ -46,32 +46,19 @@ const notFound = (req: Request, res: Response): void => {
  */
 function safeHandler(
   name: string,
-  handler: (req: Request, res: Response) => unknown,
-) : (req: Request, res: Response, next: NextFunction) => void {
-  return (req, res, next): void => {
+  handler: (req: Request, res: Response) => unknown | Promise<unknown>
+): (req: Request, res: Response, next: NextFunction) => Promise<void> {
+  return async (req, res, _next): Promise<void> => {
     try {
-      const result = handler(req, res);
-      if (result && typeof (result as Promise<unknown>).then === 'function') {
-        (result as Promise<unknown>).catch((err) => {
-          logger.error(
-            { err, route: name, method: req.method, path: req.originalUrl },
-            'health route handler failed',
-          );
-          if (!res.headersSent) {
-            res.status(503).json({
-              status: 'error',
-              code: 'health_unavailable',
-              message: 'Health check temporarily unavailable',
-            });
-          }
-        });
-      }
+      await Promise.resolve(handler(req, res));
     } catch (err) {
-      logger.error(
-        { err, route: name, method: req.method, path: req.originalUrl },
-        'health route handler threw',
-      );
-      if (!res.headersSent) {
+      logger.error('health route handler threw', {
+        err,
+        route: name,
+        method: req.method,
+        path: req.originalUrl,
+      });
+      if (!res.headersSent && !res.writableEnded) {
         res.status(503).json({
           status: 'error',
           code: 'health_unavailable',
@@ -102,7 +89,9 @@ router.all('/healthz', (req, res, next) => {
 });
 
 router.get('/', safeHandler('health', lendingController.healthCheck));
+router.head('/', safeHandler('health', lendingController.healthCheck));
 router.get('/healthz', safeHandler('deepHealth', lendingController.deepHealthCheck));
+router.head('/healthz', safeHandler('deepHealth', lendingController.deepHealthCheck));
 
 // Any unknown subpath must return a deterministic 404 instead of falling
 // through to the global error handler or leaking route information.

@@ -4,6 +4,24 @@ import { ValidationError } from '../utils/errors';
 import { I128String, PositiveI128String, StellarAddress } from '../utils/validators';
 import logger from '../utils/logger';
 
+function handleValidationFailure(error: unknown, req: Request, next: NextFunction): void {
+  if (error instanceof ValidationError) {
+    return next(error);
+  }
+
+  if (error instanceof ZodError) {
+    const issue = error.issues[0];
+    return next(new ValidationError(issue ? issue.message : 'Validation failed'));
+  }
+
+  logger.warn('Request validation failed', {
+    path: req.path,
+    method: req.method,
+    error: error instanceof Error ? error.message : 'Unknown validation error',
+  });
+  return next(new ValidationError('Validation failed'));
+}
+
 /**
  * Body validation middleware.
  *
@@ -45,7 +63,7 @@ export const validateBody =
   };
 
 export const optionalStellarAddress = z.preprocess(
-  value => (value === '' ? undefined : value),
+  (value) => (value === '' ? undefined : value),
   StellarAddress.optional()
 );
 

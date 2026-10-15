@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-@import { StellarService } from '../services/stellar.service';
+import { StellarService } from '../services/stellar.service';
 import { DepositRequest, BorrowRequest, RepayRequest, WithdrawRequest } from '../types';
 import logger from '../utils/logger';
 import {
@@ -71,7 +71,8 @@ export class LendingController {
         if (!isValidCursor(rawCursor)) {
           res.status(400).json({
             error: 'Invalid cursor',
-            message: 'The provided cursor is malformed or expired. Request the first page without a cursor.',
+            message:
+              'The provided cursor is malformed or expired. Request the first page without a cursor.',
             code: 'INVALID_CURSOR',
           });
           return;
@@ -222,6 +223,91 @@ const lendingController = new LendingController(stellarService);
  */
 export const getActivity = lendingController.getActivity.bind(lendingController);
 
+export const processHook = (_req: Request, res: Response): void => {
+  res.status(200).json({ success: true, message: 'Hook authenticated' });
+};
+
+export const borrow = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userAddress, assetAddress, amount, userSecret }: BorrowRequest = req.body;
+
+    const txXdr = await stellarService.buildBorrowTransaction(
+      userAddress,
+      assetAddress,
+      amount,
+      userSecret
+    );
+
+    const result = await stellarService.submitTransaction(txXdr);
+
+    if (result.success && result.transactionHash) {
+      const monitorResult = await stellarService.monitorTransaction(result.transactionHash);
+      return res.status(200).json(monitorResult);
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: result.error || 'Transaction submission failed',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const repay = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userAddress, assetAddress, amount, userSecret }: RepayRequest = req.body;
+
+    const txXdr = await stellarService.buildRepayTransaction(
+      userAddress,
+      assetAddress,
+      amount,
+      userSecret
+    );
+
+    const result = await stellarService.submitTransaction(txXdr);
+
+    if (result.success && result.transactionHash) {
+      const monitorResult = await stellarService.monitorTransaction(result.transactionHash);
+      return res.status(200).json(monitorResult);
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: result.error || 'Transaction submission failed',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const withdraw = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userAddress, assetAddress, amount, userSecret }: WithdrawRequest = req.body;
+
+    const txXdr = await stellarService.buildWithdrawTransaction(
+      userAddress,
+      assetAddress,
+      amount,
+      userSecret
+    );
+
+    const result = await stellarService.submitTransaction(txXdr);
+
+    if (result.success && result.transactionHash) {
+      const monitorResult = await stellarService.monitorTransaction(result.transactionHash);
+      return res.status(200).json(monitorResult);
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: result.error || 'Transaction submission failed',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deposit = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userAddress, assetAddress, amount, userSecret }: DepositRequest = req.body;
@@ -248,5 +334,63 @@ export const deposit = async (req: Request, res: Response, next: NextFunction) =
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * GET /api/health
+ *
+ * Returns a shallow readiness check for the public health endpoint. The response
+ * is intentionally shaped for load balancers and watchdog systems: it is small,
+ * deterministic, and omits any internal implementation details in the failure
+ * case. A dependency failure only affects the status field; the payload shape is
+ * stable so clients can safely cache and inspect it.
+ */
+export const healthCheck = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const services = await stellarService.healthCheck();
+    const isHealthy = Boolean(services.horizon && services.sorobanRpc);
+
+    res.status(isHealthy ? 200 : 503).json({
+      status: isHealthy ? 'healthy' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      services,
+    });
+  } catch (error) {
+    logger.error('healthCheck controller failed', { error });
+    res.status(503).json({
+      status: 'error',
+      code: 'health_unavailable',
+      message: 'Health check temporarily unavailable',
+    });
+  }
+};
+
+/**
+ * GET /api/health/healthz
+ *
+ * Performs a deeper dependency probe by checking the Soroban RPC and validating
+ * that the configured lending contract responds to a minimal invocation. The
+ * response is intentionally structured as only the diagnostic booleans plus the
+ * latest ledger when known so consumers can reason about partial failure without
+ * exposing implementation internals.
+ */
+export const deepHealthCheck = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await stellarService.pingContract();
+    const isHealthy = Boolean(result.rpc && result.contract);
+
+    res.status(isHealthy ? 200 : 503).json({
+      rpc: result.rpc,
+      contract: result.contract,
+      ledger: result.ledger,
+    });
+  } catch (error) {
+    logger.error('deepHealthCheck controller failed', { error });
+    res.status(503).json({
+      rpc: false,
+      contract: false,
+      ledger: null,
+    });
   }
 };

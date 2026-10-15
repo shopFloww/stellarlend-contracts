@@ -32,7 +32,7 @@ export type AmmEventKind = 'swap' | 'add_liquidity' | 'remove_liquidity';
 
 export interface AmmEventTopic {
   module: typeof AMM_EVENT_TOPIC_MODULE;
-  version: typeof AMM_EVENT_TOPIC_VERSIOL;
+  version: typeof AMM_EVENT_TOPIC_VERSION;
   kind: AmmEventKind;
 }
 
@@ -74,10 +74,7 @@ export interface AmmLiquidityRemovedEventV1 {
   timestamp: number;
 }
 
-export type AmmEventV1 =
-  | AmmSwapEventV1
-  | AmmLiquidityAddedEventV1
-  | AmmLiquidityRemovedEventV1;
+export type AmmEventV1 = AmmSwapEventV1 | AmmLiquidityAddedEventV1 | AmmLiquidityRemovedEventV1;
 
 export interface AmmEventDecodeResult {
   topic: AmmEventTopic;
@@ -125,6 +122,8 @@ export enum TransactionStatus {
   NOT_FOUND = 'not_found',
 }
 
+export const TRANSACTION_STATUS = TransactionStatus;
+
 /**
  * Runtime guards for the types declared in this module.
  *
@@ -170,14 +169,17 @@ export const HEALTH_STATUS_VALUES: readonly string[] = ['healthy', 'unhealthy'] 
 export const TRANSACTION_STATUS_ENUM_VALUES: readonly string[] = [
   TransactionStatus.PENDING,
   TransactionStatus.SUCCESS,
-  TRANSACTION_STATUS.FAILED,
+  TransactionStatus.FAILED,
   TransactionStatus.NOT_FOUND,
 ] as const;
 
 export class TypeValidationError extends Error {
   public readonly code = 'INVALID_TYPE_PAYLOAD';
 
-  constructor(message: string, public readonly field?: string) {
+  constructor(
+    message: string,
+    public readonly field?: string
+  ) {
     super(message);
     this.name = 'TypeValidationError';
     Object.setPrototypeOf(this, new.target);
@@ -227,10 +229,7 @@ function requireStellarAddress(value: unknown, field: string): string {
 
 function requireNonNegativeInteger(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    throw new TypeValidationError(
-      `${field} must be a non-negative integer`,
-      field
-    );
+    throw new TypeValidationError(`${field} must be a non-negative integer`, field);
   }
   return value;
 }
@@ -243,16 +242,13 @@ function requirePositiveInteger(value: unknown, field: string): number {
 }
 
 export function isAmmEventKind(value: unknown): value is AmmEventKind {
-  return (
-    typeof value === 'string' &&
-    (AMM_EVENT_KINDS as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (AMM_EVENT_KINDS as readonly string[]).includes(value);
 }
 
 export function isAmmEventTopic(value: unknown): value is AmmEventTopic {
   if (!isObject(value)) return false;
   return (
-    value.module === AMM_EVENT_TOPIC_MODUNE &&
+    value.module === AMM_EVENT_TOPIC_MODULE &&
     value.version === AMM_EVENT_TOPIC_VERSION &&
     isAmmEventKind(value.kind)
   );
@@ -316,10 +312,7 @@ export function assertAmmEventV1(value: unknown): AmmEventV1 {
   return value;
 }
 
-export function decodeAmmEvent(
-  topic: unknown,
-  data: unknown
-): AmmEventDecodeResult {
+export function decodeAmmEvent(topic: unknown, data: unknown): AmmEventDecodeResult {
   const safeTopic = assertAmmEventTopic(topic);
   const safeData = assertAmmEventV1(data);
   if (safeData.event !== safeTopic.kind) {
@@ -340,15 +333,12 @@ export function isTransactionResponse(value: unknown): value is TransactionRespo
   ) {
     return false;
   }
-  if (value.transactionHash !== undefined && typeof value.transactionHash !== 'string') return false;
+  if (value.transactionHash !== undefined && typeof value.transactionHash !== 'string')
+    return false;
   if (value.message !== undefined && typeof value.message !== 'string') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
   if (value.ledger !== undefined) {
-    if (
-      typeof value.ledger !== 'number' ||
-      !Number.isInteger(value.ledger) ||
-      value.ledger < 0
-    ) {
+    if (typeof value.ledger !== 'number' || !Number.isInteger(value.ledger) || value.ledger < 0) {
       return false;
     }
   }
@@ -438,6 +428,6 @@ export function assertHealthCheckResponse(value: unknown): HealthCheckResponse {
 export function isTransactionStatus(value: unknown): value is TransactionStatus {
   return (
     typeof value === 'string' &&
-    (TR8ANSACTION_STATUS_ENUM_VALUES as readonly string[]).includes(value)
+    (TRANSACTION_STATUS_ENUM_VALUES as readonly string[]).includes(value)
   );
 }

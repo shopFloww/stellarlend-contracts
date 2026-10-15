@@ -33,7 +33,11 @@ export class CursorError extends Error {
 export function encodeCursor(cursor: Cursor): string {
   const { ledgerSequence, eventIndex } = cursor ?? ({} as Cursor);
 
-  if (!Number.isInteger(ledgerSequence) || ledgerSequence < 0 || ledgerSequence > MAX_LEDGER_SEQUENCE) {
+  if (
+    !Number.isInteger(ledgerSequence) ||
+    ledgerSequence < 0 ||
+    ledgerSequence > MAX_LEDGER_SEQUENCE
+  ) {
     throw new CursorError(`Invalid ledger sequence: ${ledgerSequence}`);
   }
   if (!Number.isInteger(eventIndex) || eventIndex < 0 || eventIndex > MAX_EVENT_INDEX) {
@@ -49,12 +53,11 @@ export function decodeCursor(cursorString: string): Cursor {
     throw new CursorError('Cursor must be a non-empty string');
   }
 
-  let plain: string;
+  let decoded: string;
   try {
-    const buf = Buffer.from(cursor, 'base64');
-    // Basic validation of base64 characters
-    if (/[^A-Za-z0-9+/=_-]/.test(cursor)) {
-      throw new Error('Invalid base64 characters');
+    const buf = Buffer.from(cursorString, 'base64url');
+    if (/[^A-Za-z0-9+/=_-]/.test(cursorString)) {
+      throw new Error('Invalid base64url characters');
     }
     decoded = buf.toString('utf-8');
   } catch (error) {
